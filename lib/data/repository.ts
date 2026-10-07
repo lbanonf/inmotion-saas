@@ -7,6 +7,7 @@ import type {
   Appointment,
   AppointmentStatus,
   CreateAppointmentInput,
+  CreateTimeBlockInput,
   Faq,
   FaqInput,
   Product,
@@ -18,6 +19,7 @@ import type {
   SlotLock,
   Tenant,
   TenantInput,
+  TimeBlock,
 } from '@/lib/domain/types'
 
 export type Unsubscribe = () => void
@@ -63,6 +65,11 @@ export interface AdminRepository {
   subscribeToFaqs(tenantId: string, onData: Listener<Faq[]>, onError?: ErrorListener): Unsubscribe
   saveFaq(tenantId: string, input: FaqInput, id?: string): Promise<string>
   deleteFaq(tenantId: string, id: string): Promise<void>
+
+  subscribeToTimeBlocks(tenantId: string, onData: Listener<TimeBlock[]>, onError?: ErrorListener): Unsubscribe
+  /** Bloquea un horario de un profesional. Lanza SlotTakenError si choca con una cita u otro bloqueo. */
+  createTimeBlock(tenantId: string, input: CreateTimeBlockInput): Promise<string>
+  deleteTimeBlock(tenantId: string, block: TimeBlock): Promise<void>
 }
 
 export interface AuthProvider {

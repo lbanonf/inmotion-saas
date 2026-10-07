@@ -51,6 +51,10 @@ service cloud.firestore {
         allow write: if isAdmin(tenantId);
       }
 
+      match /timeBlocks/{blockId} {
+        allow read, write: if isAdmin(tenantId);
+      }
+
       match /faqs/{faqId} {
         allow read: if true;
         allow write: if isAdmin(tenantId);

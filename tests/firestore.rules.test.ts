@@ -104,6 +104,14 @@ describe('administración', () => {
     await assertFails(setDoc(doc(db, `tenants/${T}/products/x`), { name: 'hack' }))
   })
 
+  it('solo el admin ve y crea bloqueos de horario', async () => {
+    const admin = env.authenticatedContext('admin').firestore()
+    await assertSucceeds(setDoc(doc(admin, `tenants/${T}/timeBlocks/b1`), { professionalId: 'p1', date: '2030-01-10', start: '13:00', end: '14:00', reason: 'Almuerzo' }))
+    await assertSucceeds(setDoc(doc(admin, `tenants/${T}/slotLocks/p1_2030-01-10_1300`), { appointmentId: 'block:b1', professionalId: 'p1', date: '2030-01-10', time: '13:00', createdAt: serverTimestamp() }))
+    const anon = env.unauthenticatedContext().firestore()
+    await assertFails(getDocs(collection(anon, `tenants/${T}/timeBlocks`)))
+  })
+
   it('otro usuario autenticado no accede', async () => {
     const db = env.authenticatedContext('intruso').firestore()
     await assertFails(getDocs(collection(db, `tenants/${T}/appointments`)))

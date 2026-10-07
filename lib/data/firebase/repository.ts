@@ -19,6 +19,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { slotKeysFor } from '@/lib/domain/availability'
+import { timeToMinutes } from '@/lib/domain/time'
 import { normalizeAssistant, normalizeProfile, normalizeSettings, normalizeWeeklyHours } from '@/lib/domain/defaults'
 import {
   BLOCKING_STATUSES,
@@ -30,6 +31,7 @@ import {
   type Service,
   type SlotLock,
   type Tenant,
+  type TimeBlock,
 } from '@/lib/domain/types'
 import { SlotTakenError, type AdminRepository, type BookingRepository, type ErrorListener } from '../repository'
 import { getDb } from './client'
@@ -41,10 +43,11 @@ import { getDb } from './client'
 //   tenants/{tenantId}/appointments/{id}     citas con datos personales (solo admins)
 //   tenants/{tenantId}/slotLocks/{key}       bloques ocupados, sin datos personales (lectura pública)
 //   tenants/{tenantId}/products/{id}         productos a la venta (lectura pública)
+//   tenants/{tenantId}/timeBlocks/{id}       horarios bloqueados del equipo (solo admins)
 //   tenants/{tenantId}/faqs/{id}             preguntas frecuentes / base del asistente (lectura pública)
 
 const tenantRef = (tenantId: string) => doc(getDb(), 'tenants', tenantId)
-const sub = (tenantId: string, name: 'services' | 'professionals' | 'appointments' | 'slotLocks' | 'products' | 'faqs') => collection(getDb(), 'tenants', tenantId, name)
+const sub = (tenantId: string, name: 'services' | 'professionals' | 'appointments' | 'slotLocks' | 'products' | 'faqs' | 'timeBlocks') => collection(getDb(), 'tenants', tenantId, name)
 
 function toError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error))
@@ -143,6 +146,19 @@ function toAppointment(snapshot: QueryDocumentSnapshot<DocumentData>): Appointme
     source: data.source === 'admin' ? 'admin' : 'web',
     slotKeys: Array.isArray(data.slotKeys) ? data.slotKeys.map(String) : [],
     createdAt: typeof data.createdAt?.toDate === 'function' ? data.createdAt.toDate() : null,
+  }
+}
+
+function toTimeBlock(snapshot: QueryDocumentSnapshot<DocumentData>): TimeBlock {
+  const data = snapshot.data()
+  return {
+    id: snapshot.id,
+    professionalId: String(data.professionalId ?? ''),
+    date: String(data.date ?? ''),
+    start: String(data.start ?? ''),
+    end: String(data.end ?? ''),
+    reason: String(data.reason ?? ''),
+    slotKeys: Array.isArray(data.slotKeys) ? data.slotKeys.map(String) : [],
   }
 }
 
@@ -342,4 +358,38 @@ export const firebaseAdminRepository: AdminRepository = {
   },
   saveFaq: (tenantId, input, id) => saveIn(tenantId, 'faqs', input, id),
   deleteFaq: (tenantId, id) => deleteIn(tenantId, 'faqs', id),
+
+  subscribeToTimeBlocks(tenantId, onData, onError) {
+    return subscribeCollection(sub(tenantId, 'timeBlocks'), toTimeBlock, onData, onError)
+  },
+
+  async createTimeBlock(tenantId, input) {
+    const blockRef = doc(sub(tenantId, 'timeBlocks'))
+    const duration = timeToMinutes(input.end) - timeToMinutes(input.start)
+    if (duration <= 0) throw new Error('El fin del bloqueo debe ser posterior al inicio.')
+    const slotKeys = slotKeysFor(input.professionalId, input.date, input.start, duration, input.slotIntervalMinutes)
+
+    await runTransaction(getDb(), async (transaction) => {
+      const locks = await Promise.all(slotKeys.map((key) => transaction.get(doc(sub(tenantId, 'slotLocks'), key))))
+      if (locks.some((lock) => lock.exists())) throw new SlotTakenError()
+      transaction.set(blockRef, {
+        professionalId: input.professionalId,
+        date: input.date,
+        start: input.start,
+        end: input.end,
+        reason: input.reason.trim(),
+        slotKeys,
+        createdAt: serverTimestamp(),
+      })
+      slotKeys.forEach((key) => transaction.set(doc(sub(tenantId, 'slotLocks'), key), lockData(key, `block:${blockRef.id}`, input.professionalId, input.date)))
+    })
+    return blockRef.id
+  },
+
+  async deleteTimeBlock(tenantId, block) {
+    const batch = writeBatch(getDb())
+    batch.delete(doc(sub(tenantId, 'timeBlocks'), block.id))
+    block.slotKeys.forEach((key) => batch.delete(doc(sub(tenantId, 'slotLocks'), key)))
+    await batch.commit()
+  },
 }

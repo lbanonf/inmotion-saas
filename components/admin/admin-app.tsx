@@ -130,7 +130,7 @@ function Onboarding({ tenantId, user }: { tenantId: string; user: AdminUser }) {
     setBusy(true)
     setError(null)
     try {
-      await applyTemplate(getDataProvider().admin, tenantId, { ...template, profile: { ...template.profile, name } }, { createTenant: { adminUids: [user.uid], adminEmails: user.email ? [user.email.toLowerCase()] : [] } })
+      await applyTemplate(getDataProvider().admin, getDataProvider().booking, tenantId, { ...template, profile: { ...template.profile, name } }, { createTenant: { adminUids: [user.uid], adminEmails: user.email ? [user.email.toLowerCase()] : [] } })
     } catch (createError) {
       console.error('[admin] No se pudo crear el negocio', createError)
       setError('No se pudo crear el negocio. Revisa las reglas de Firestore y vuelve a intentarlo.')

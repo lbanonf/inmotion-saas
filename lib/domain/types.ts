@@ -177,6 +177,19 @@ export type CreateAppointmentInput = {
   status?: Extract<AppointmentStatus, 'pending' | 'approved'>
 }
 
+/** Horario bloqueado de un profesional (almuerzo, ausencia, capacitación...). */
+export type TimeBlock = {
+  id: string
+  professionalId: string
+  date: string
+  start: string
+  end: string
+  reason: string
+  slotKeys: string[]
+}
+
+export type CreateTimeBlockInput = Omit<TimeBlock, 'id' | 'slotKeys'> & { slotIntervalMinutes: number }
+
 /** Bloque de agenda ocupado. No contiene datos personales: es público. */
 export type SlotLock = {
   id: string

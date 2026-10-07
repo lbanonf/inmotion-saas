@@ -14,11 +14,12 @@ Está pensada como **SaaS de marca blanca**: el contenido de cada negocio vive e
 - Marca configurable: nombre, colores, textos y fondo (claro u oscuro).
 
 **Panel `/admin`**
-- **Resumen**: citas de hoy, próximos 7 días, pendientes e ingresos aprobados del mes.
+- **Resumen**: citas de hoy, próximos 7 días, pendientes, ingresos aprobados del mes y la carga de cada profesional hoy.
+- **Agenda**: vista Día (una columna por profesional, línea de tiempo, hora actual, fuera de horario) y vista Semana (ocupación % por persona y día). Tocar un espacio libre permite agendar una cita o bloquear el horario (almuerzo, ausencia, vacaciones, también por rango de fechas).
 - **Citas**: filtros, búsqueda, aprobar/rechazar/cancelar/reactivar, nueva cita manual y mensaje de confirmación por WhatsApp prellenado.
 - **Clientes**: historial generado desde las reservas (visitas, próximas citas, total gastado).
 - **Servicios** y **Productos**: CRUD, precios, stock, categorías e importación desde CSV/Excel.
-- **Equipo**: profesionales, servicios que atienden y horario propio.
+- **Equipo**: matriz de horarios semanales de todo el equipo, servicios que atiende cada uno y horario propio editable.
 - **Asistente**: personalidad del bot, preguntas frecuentes, chat de prueba y "conocimiento del bot" (prompt generado con los datos del negocio).
 - **Configuración**: marca, contacto, reglas de reserva, horario por defecto y carga de datos de ejemplo.
 
@@ -60,7 +61,7 @@ Para agregar más administradores, añade su correo (en minúsculas) al arreglo 
 | `npm test` | Pruebas unitarias (disponibilidad, fechas) |
 | `npm run test:rules` | Pruebas de `firestore.rules` contra el emulador (requiere Java) |
 | `npm run emulators` | Emuladores locales de Firestore y Auth |
-| `npm run seed -- --admin-email correo@x.com` | Carga inicial de un negocio desde `config/templates.ts` |
+| `npm run seed -- --admin-email correo@x.com` | Carga o actualiza (por nombre, sin duplicar) un negocio desde `config/templates.ts`. `--demo` agrega citas y bloqueos de ejemplo |
 
 ## Variables de entorno
 
@@ -121,6 +122,7 @@ tenants/{tenantId}/appointments/{id}   cita + datos del cliente            solo 
 tenants/{tenantId}/slotLocks/{key}     bloque de agenda ocupado            lectura pública, sin datos personales
 tenants/{tenantId}/products/{id}       productos, precio, stock            lectura pública
 tenants/{tenantId}/faqs/{id}           preguntas frecuentes del asistente  lectura pública
+tenants/{tenantId}/timeBlocks/{id}     horarios bloqueados del equipo      solo admins (ocupan slotLocks)
 ```
 
 **Disponibilidad y doble reserva.** La agenda se divide en bloques de `slotIntervalMinutes`. Cada cita ocupa los bloques que cubre su duración. Por cada bloque se crea un documento `slotLocks/{profesional}_{fecha}_{HHmm}` en la misma transacción que la cita. Si dos personas reservan el mismo horario, la segunda transacción falla. La página pública escucha los bloqueos en tiempo real para mostrar solo horarios libres sin exponer datos de otros clientes. Al rechazar o cancelar una cita, sus bloques se liberan.

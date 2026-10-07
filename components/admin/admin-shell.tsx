@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bot, CalendarDays, Contact, ExternalLink, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Users } from 'lucide-react'
+import { Bot, CalendarClock, CalendarDays, Contact, ExternalLink, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Users } from 'lucide-react'
 import { getDataProvider } from '@/lib/data'
 import { initialsOf, nowInTimezone } from '@/lib/domain/time'
-import type { AdminUser, Appointment, Faq, Product, Professional, Service, Tenant } from '@/lib/domain/types'
+import type { AdminUser, Appointment, Faq, Product, Professional, Service, Tenant, TimeBlock } from '@/lib/domain/types'
+import { AgendaSection } from './agenda-section'
 import { AppointmentsSection } from './appointments-section'
 import { AssistantSection } from './assistant-section'
 import { ClientsSection } from './clients-section'
@@ -22,10 +23,12 @@ export type AdminData = {
   professionals: Professional[]
   products: Product[]
   faqs: Faq[]
+  timeBlocks: TimeBlock[]
 }
 
 const sections = [
   { id: 'overview', label: 'Resumen', icon: LayoutDashboard },
+  { id: 'agenda', label: 'Agenda', icon: CalendarClock },
   { id: 'appointments', label: 'Citas', icon: CalendarDays },
   { id: 'clients', label: 'Clientes', icon: Contact },
   { id: 'services', label: 'Servicios', icon: Scissors },
@@ -38,13 +41,17 @@ const sections = [
 export type SectionId = (typeof sections)[number]['id']
 
 export function AdminShell({ tenant, user }: { tenant: Tenant; user: AdminUser }) {
-  const [active, setActive] = useState<SectionId>('overview')
+  const [active, setActive] = useState<SectionId>(() => {
+    const hash = typeof window === 'undefined' ? '' : window.location.hash.slice(1)
+    return sections.some((section) => section.id === hash) ? (hash as SectionId) : 'overview'
+  })
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [professionals, setProfessionals] = useState<Professional[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [faqs, setFaqs] = useState<Faq[]>([])
+  const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -59,14 +66,16 @@ export function AdminShell({ tenant, user }: { tenant: Tenant; user: AdminUser }
       admin.subscribeToProfessionals(tenant.id, setProfessionals, onError),
       admin.subscribeToProducts(tenant.id, setProducts, onError),
       admin.subscribeToFaqs(tenant.id, setFaqs, onError),
+      admin.subscribeToTimeBlocks(tenant.id, setTimeBlocks, onError),
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [tenant.id])
 
-  const data: AdminData = { tenant, appointments, services, professionals, products, faqs }
+  const data: AdminData = { tenant, appointments, services, professionals, products, faqs, timeBlocks }
   const pendingCount = appointments.filter((item) => item.status === 'pending').length
   const go = (id: SectionId) => {
     setActive(id)
+    window.history.replaceState(null, '', `#${id}`)
     setIsMobileNavOpen(false)
   }
 
@@ -103,6 +112,7 @@ export function AdminShell({ tenant, user }: { tenant: Tenant; user: AdminUser }
         <main className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">
           {loadError && <div className="mb-6"><Notice>{loadError}</Notice></div>}
           {active === 'overview' && <OverviewSection data={data} onNavigate={go} />}
+          {active === 'agenda' && <AgendaSection data={data} />}
           {active === 'appointments' && <AppointmentsSection data={data} />}
           {active === 'clients' && <ClientsSection data={data} today={nowInTimezone(tenant.settings.timezone).date} />}
           {active === 'services' && <ServicesSection data={data} />}

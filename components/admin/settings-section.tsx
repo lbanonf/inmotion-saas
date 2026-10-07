@@ -127,12 +127,12 @@ function SampleDataCard({ tenantId }: { tenantId: string }) {
 
   async function load() {
     const template = TEMPLATES.find((item) => item.id === templateId)
-    if (!template || !confirm('Se agregarán servicios, equipo, productos y respuestas de ejemplo. No se borra nada existente. ¿Continuar?')) return
+    if (!template || !confirm('Se agregan o actualizan (por nombre) servicios, equipo, productos y respuestas. No se borra nada. ¿Continuar?')) return
     setBusy(true)
     setMessage(null)
     try {
-      const result = await applyTemplate(getDataProvider().admin, tenantId, template, { includeProfile })
-      setMessage({ tone: 'success', text: `Cargados: ${result.services} servicios, ${result.professionals} profesionales, ${result.products} productos y ${result.faqs} respuestas.` })
+      const result = await applyTemplate(getDataProvider().admin, getDataProvider().booking, tenantId, template, { includeProfile })
+      setMessage({ tone: 'success', text: `Listo: ${result.services} servicios, ${result.professionals} profesionales, ${result.products} productos y ${result.faqs} respuestas.` })
     } catch (loadError) {
       setMessage({ tone: 'error', text: errorMessage(loadError, 'No se pudieron cargar los datos.') })
     } finally {
@@ -143,12 +143,12 @@ function SampleDataCard({ tenantId }: { tenantId: string }) {
   return (
     <Card className="p-6">
       <h2 className="mb-1 flex items-center gap-2 font-semibold"><Database className="size-4 text-(--brand)" />Datos de ejemplo</h2>
-      <p className="mb-4 text-xs text-slate-400">Carga un catálogo inicial para probar o hacer una demo.</p>
+      <p className="mb-4 text-xs text-slate-400">Carga o actualiza el catálogo de la plantilla. Los registros con el mismo nombre se actualizan; nada se duplica ni se borra.</p>
       <div className="grid gap-3">
         <select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className={inputClass}>{loadable.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
         <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={includeProfile} onChange={(event) => setIncludeProfile(event.target.checked)} className="size-4 accent-(--brand)" />También reemplazar marca, horarios y asistente</label>
         {message && <Notice tone={message.tone}>{message.text}</Notice>}
-        <div><Button variant="outline" onClick={load} disabled={busy}>{busy ? 'Cargando...' : 'Cargar datos'}</Button></div>
+        <div><Button variant="outline" onClick={load} disabled={busy}>{busy ? 'Cargando...' : 'Cargar / actualizar datos'}</Button></div>
       </div>
     </Card>
   )
