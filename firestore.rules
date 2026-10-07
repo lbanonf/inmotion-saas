@@ -1,0 +1,110 @@
+rules_version = '2';
+
+// Modelo multi-tenant (ver lib/data/firebase/repository.ts):
+//   tenants/{tenantId}                     público: perfil y configuración
+//   tenants/{tenantId}/services|professionals   público, escribe solo admin
+//   tenants/{tenantId}/appointments        crea cualquiera (validado), lee/edita solo admin
+//   tenants/{tenantId}/slotLocks           público, sin datos personales
+//   tenants/{tenantId}/products|faqs       público, escribe solo admin
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function tenantPath(tenantId) {
+      return /databases/$(database)/documents/tenants/$(tenantId);
+    }
+
+    // Admin = UID en adminUids o correo (en minúsculas) en adminEmails.
+    function isAdmin(tenantId) {
+      let tenant = get(tenantPath(tenantId)).data;
+      return signedIn()
+        && (request.auth.uid in tenant.adminUids
+          || request.auth.token.get('email', '').lower() in tenant.get('adminEmails', []));
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if true;
+      // Quien crea el negocio queda como único admin. Para sumar admins,
+      // edita adminUids desde la consola de Firebase.
+      allow create: if signedIn()
+        && request.resource.data.adminUids == [request.auth.uid]
+        && request.resource.data.get('adminEmails', []) in [[], [request.auth.token.get('email', '').lower()]];
+      allow update: if isAdmin(tenantId)
+        && request.resource.data.adminUids == resource.data.adminUids
+        && request.resource.data.get('adminEmails', []) == resource.data.get('adminEmails', []);
+      allow delete: if false;
+
+      match /services/{serviceId} {
+        allow read: if true;
+        allow write: if isAdmin(tenantId);
+      }
+
+      match /professionals/{professionalId} {
+        allow read: if true;
+        allow write: if isAdmin(tenantId);
+      }
+
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if isAdmin(tenantId);
+      }
+
+      match /faqs/{faqId} {
+        allow read: if true;
+        allow write: if isAdmin(tenantId);
+      }
+
+      match /appointments/{appointmentId} {
+        allow read, update: if isAdmin(tenantId);
+        allow delete: if false;
+        allow create: if isAdmin(tenantId) || isValidPublicAppointment(tenantId);
+      }
+
+      match /slotLocks/{lockId} {
+        allow read: if true;
+        allow create: if isAdmin(tenantId) || isLockForNewAppointment(tenantId, lockId);
+        allow update, delete: if isAdmin(tenantId);
+      }
+    }
+
+    function isValidPublicAppointment(tenantId) {
+      let data = request.resource.data;
+      let svc = get(/databases/$(database)/documents/tenants/$(tenantId)/services/$(data.serviceId)).data;
+      let pro = get(/databases/$(database)/documents/tenants/$(tenantId)/professionals/$(data.professionalId)).data;
+      return data.keys().hasOnly(['serviceId', 'serviceName', 'durationMinutes', 'price', 'professionalId', 'professionalName', 'date', 'time', 'contact', 'notes', 'status', 'source', 'slotKeys', 'createdAt'])
+        && data.status == 'pending'
+        && data.source == 'web'
+        && data.createdAt == request.time
+        && svc.active == true
+        && pro.active == true
+        && data.serviceName == svc.name
+        && data.price == svc.price
+        && data.durationMinutes == svc.durationMinutes
+        && data.professionalName == pro.name
+        && data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.time is string && data.time.matches('^[0-9]{2}:[0-9]{2}$')
+        && data.contact.keys().hasOnly(['name', 'email', 'phone'])
+        && data.contact.name is string && data.contact.name.size() > 0 && data.contact.name.size() <= 120
+        && data.contact.email is string && data.contact.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && data.contact.phone is string && data.contact.phone.size() <= 30
+        && data.notes is string && data.notes.size() <= 500
+        && data.slotKeys is list && data.slotKeys.size() > 0 && data.slotKeys.size() <= 48
+        && data.slotKeys[0] == data.professionalId + '_' + data.date + '_' + data.time.replace(':', '')
+        && existsAfter(/databases/$(database)/documents/tenants/$(tenantId)/slotLocks/$(data.slotKeys[0]));
+    }
+
+    // Un bloqueo público solo puede crearse en la misma escritura que la cita
+    // que lo ocupa (createdAt == request.time) y debe figurar en su slotKeys.
+    function isLockForNewAppointment(tenantId, lockId) {
+      let lock = request.resource.data;
+      let appointment = getAfter(/databases/$(database)/documents/tenants/$(tenantId)/appointments/$(lock.appointmentId)).data;
+      return lock.keys().hasOnly(['appointmentId', 'professionalId', 'date', 'time', 'createdAt'])
+        && appointment.createdAt == request.time
+        && lockId in appointment.slotKeys
+        && lock.professionalId == appointment.professionalId
+        && lock.date == appointment.date;
+    }
+  }
+}
